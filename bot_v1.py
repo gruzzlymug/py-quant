@@ -43,6 +43,22 @@ def create_iex_csv(iex_token):
     else:
         print("failed: " + response.status_code)
 
+def calculate_drawdown(stock_df):
+    window = 252
+
+    plt.clf()
+    stock_df['Adj_Close'].plot()
+    rolling_max = stock_df['Adj_Close'].rolling(window, min_periods=1).max()
+    rolling_max.plot()
+    # notebook formula for max dd
+    dd = stock_df['Adj_Close']/rolling_max - 1
+    (dd*100+10).plot()
+    # investopedia formula
+    # https://www.investopedia.com/terms/m/maximum-drawdown-mdd.asp
+    mdd = (stock_df['Adj_Close'] - rolling_max) / rolling_max
+    (mdd*100).plot()
+    plt.savefig('images/dd.png')
+
 config = configparser.ConfigParser()
 config.read('data.ini')
 iex_key = config['DEFAULT']['svc_key_iex']
@@ -51,35 +67,33 @@ quandl_api_key = config['DEFAULT']['svc_key_quandl_course']
 #create_iex_csv(iex_key)
 create_quandl_csv(quandl_api_key)
 
-#df = pd.read_csv('data/aapl.csv', index_col=0, header=0, parse_dates=True)
 df = pd.read_csv('data/apple_stock_eod_prices.csv', index_col=0, header=0, parse_dates=True)
-# convert time col to datetime obj and set as index
-#df['time'] = df
 #print(df.head)
-print(df.index)
-print(df.columns)
-print(list(df.columns))
+#print(df.index)
+#print(df.columns)
+#print(list(df.columns))
 #print(df.info)
 #print(df.loc[pd.Timestamp('2014-11-01'):pd.Timestamp('2014-12-31')].head())
 #print(df.sample(20))
+
 df['diff'] = df.Open - df.Close
 #print(df['diff'])
+
 daily_close = df[['Adj_Close']]
-# spoiler: it's a dataframe
-#print(type(daily_close))
+#daily_close.plot()
+#plt.savefig('images/daily_close.png', bbox_inches='tight')
 #print(daily_close)
+
 daily_pct_c = daily_close.pct_change()
 daily_pct_c.fillna(0, inplace=True)
 print(daily_pct_c.head())
 #print(df.loc['2016-07'])
 #print(df.iloc[20:43])
-print(df.describe())
+#print(df.describe())
 cum_daily_return = (daily_pct_c+1).cumprod()
 print(cum_daily_return.head())
-cum_daily_return.plot(grid=True)
-plt.savefig('images/foo.png', bbox_inches='tight')
-cum_daily_return.plot(figsize=(12,8))
-plt.savefig('images/bar.png', bbox_inches='tight')
+cum_daily_return.plot(figsize=(12,8),grid=True)
+plt.savefig('images/cum_dly_ret.png', bbox_inches='tight')
 cum_monthly_return = cum_daily_return.resample("M").mean()
 
 # Moving Window Computation
@@ -94,8 +108,8 @@ df[['Adj_Close', '40', '252', 'vol', 'max']].plot(grid=True)
 plt.savefig('images/baz.png')
 
 # Strategy
-short_window = 50
-long_window = 120
+short_window = 40
+long_window = 252
 
 signals = pd.DataFrame(index=df.index)
 signals['signal'] = 0.0
@@ -120,6 +134,8 @@ ax1.plot(signals.loc[signals.positions == -1.0].index,
 
 plt.savefig('images/sig2.png')
 
+calculate_drawdown(df)
+
 # Backtest the Strategy
 capital = float(100000.0)
 positions = pd.DataFrame(index=signals.index).fillna(0.0)
@@ -130,7 +146,7 @@ portfolio['holdings'] = (positions.multiply(df['Adj_Close'], axis=0)).sum(axis=1
 portfolio['cash'] = capital - (pos_diff.multiply(df['Adj_Close'], axis=0)).sum(axis=1).cumsum()
 portfolio['total'] = portfolio['cash'] + portfolio['holdings']
 portfolio['returns'] = portfolio['total'].pct_change()
-print(portfolio.tail(50))
+print(portfolio.tail(5))
 portfolio.plot()
 plt.savefig('images/returns.png')
 
