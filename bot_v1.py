@@ -130,14 +130,14 @@ adj_close_px = df['Adj_Close']
 plot_crossover(short_window, long_window, adj_close_px)
 
 bars = pd.DataFrame(index=df.index)
+bars['Open'] = df['Adj_Open']
 bars['Close'] = df['Adj_Close']
 strategy = Strategy(bars, short_window, long_window)
 signals = strategy.generate_signals()
 
-pp = Portfolio()
-portfolio = pp.backtest(bars, signals)
+pp = Portfolio('AAPL', bars, signals)
+portfolio = pp.backtest_portfolio()
 
-#portfolio = backtest(signals, df)
 print(portfolio[short_window:short_window+5:])
 print(portfolio.tail(5))
 
