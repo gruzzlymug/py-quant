@@ -7,6 +7,8 @@ import csv
 import quandl as q
 import matplotlib.pyplot as plt
 
+from strategy import Strategy
+
 def write_json_to_file(text, filename):
     text_file = open(filename, "w")
     text_file.write(text)
@@ -64,37 +66,6 @@ def plot_crossover(short, long, adj_close_px):
     df[['Adj_Close', short_label, long_label]].plot(grid=True)
     plt.savefig('images/crossover.png', bbox_inches='tight')
 
-def plot_signals(df, short_window, long_window):
-    """ This Bot's Strategy """
-
-    plt.clf()
-    signals = pd.DataFrame(index=df.index)
-    signals['signal'] = 0.0
-    signals['short_mavg'] = df['Adj_Close'].rolling(window=short_window, min_periods=1, center=False).mean()
-    signals['long_mavg'] = df['Adj_Close'].rolling(window=long_window, min_periods=1, center=False).mean()
-    signals['signal'][short_window:] = np.where(signals['short_mavg'][short_window:]
-            > signals['long_mavg'][short_window:], 1.0, 0.0)
-    signals['positions'] = signals['signal'].diff()
-    fig = plt.figure(figsize=(12,8))
-    ax1 = fig.add_subplot(111, ylabel='Price in $')
-    df['Adj_Close'].plot(ax=ax1, color='k', lw=1.0)
-    signals[['short_mavg', 'long_mavg']].plot(ax=ax1, lw=2.0, grid=True)
-    # buys
-    #marker = '^'
-    marker = '|'
-    ax1.plot(signals.loc[signals.positions == 1.0].index,
-            signals.short_mavg[signals.positions == 1.0],
-            marker, markersize=15, color='#00aa33')
-    # sells
-    #marker = 'v'
-    marker = '|'
-    ax1.plot(signals.loc[signals.positions == -1.0].index,
-            signals.short_mavg[signals.positions == -1.0],
-            marker, markersize=15, color='r')
-
-    plt.savefig('images/sig2.png', bbox_inches='tight')
-    return signals
-
 def calculate_drawdown(stock_df):
     window = 252
 
@@ -118,6 +89,21 @@ def plot_volatility(df, daily_pct_c):
     df['vol'] = daily_pct_c.rolling(window=min_periods).std() * np.sqrt(min_periods)
     df[['vol']].plot(grid=True)
     plt.savefig('images/vol.png', bbox_inches='tight')
+
+def backtest(signals, df):
+    """ Backtest the Strategy """
+    capital = float(100000.0)
+    positions = pd.DataFrame(index=signals.index).fillna(0.0)
+    positions['AAPL'] = 100*signals['signal']
+    portfolio = positions.multiply(df['Adj_Close'], axis=0)
+    pos_diff = positions.diff()
+    portfolio['holdings'] = (positions.multiply(df['Adj_Close'], axis=0)).sum(axis=1)
+    portfolio['cash'] = capital - (pos_diff.multiply(df['Adj_Close'], axis=0)).sum(axis=1).cumsum()
+    portfolio['total'] = portfolio['cash'] + portfolio['holdings']
+    portfolio['returns'] = portfolio['total'].pct_change()
+    portfolio.plot()
+    plt.savefig('images/returns.png')
+    return portfolio
 
 config = configparser.ConfigParser()
 config.read('data.ini')
@@ -156,31 +142,25 @@ adj_close_px = df['Adj_Close']
 #df['max'] = adj_close_px.rolling(window=40).max()
 plot_crossover(short_window, long_window, adj_close_px)
 
-signals = plot_signals(df, short_window, long_window)
+bars = pd.DataFrame(index=df.index)
+bars['Close'] = df['Adj_Close']
+strategy = Strategy(bars, short_window, long_window)
+signals = strategy.generate_signals()
 
-calculate_drawdown(df)
-
-# Backtest the Strategy
-capital = float(100000.0)
-positions = pd.DataFrame(index=signals.index).fillna(0.0)
-positions['AAPL'] = 100*signals['signal']
-portfolio = positions.multiply(df['Adj_Close'], axis=0)
-pos_diff = positions.diff()
-portfolio['holdings'] = (positions.multiply(df['Adj_Close'], axis=0)).sum(axis=1)
-portfolio['cash'] = capital - (pos_diff.multiply(df['Adj_Close'], axis=0)).sum(axis=1).cumsum()
-portfolio['total'] = portfolio['cash'] + portfolio['holdings']
-portfolio['returns'] = portfolio['total'].pct_change()
+portfolio = backtest(signals, df)
 print(portfolio[short_window:short_window+5:])
 print(portfolio.tail(5))
-portfolio.plot()
-plt.savefig('images/returns.png')
 
-# Sharpe Ratio (Annualized)
+# RISK ASSESSMENT METRICS
+# 1. Sharpe Ratio (Annualized)
 returns = portfolio['returns']
 sharpe_ratio = np.sqrt(252) * (returns.mean() / returns.std())
-print(sharpe_ratio)
+print(f"{'Sharpe Ratio:':<14} {sharpe_ratio:>12}")
 
-# Compound Annual Growth Rate
+# 2. Maximum Drawdown
+calculate_drawdown(df)
+
+# 3. Compound Annual Growth Rate
 days = (df.index[-1] - df.index[0]).days
 cagr = ((((df['Adj_Close'][-1]) / df['Adj_Close'][1])) ** (365.0/days)) - 1
-print(cagr)
+print(f"{'CAGR:':<14} {cagr:>12}")
