@@ -7,6 +7,7 @@ import csv
 import quandl as q
 import matplotlib.pyplot as plt
 
+from portfolio import Portfolio
 from strategy import Strategy
 
 def write_json_to_file(text, filename):
@@ -90,20 +91,6 @@ def plot_volatility(df, daily_pct_c):
     df[['vol']].plot(grid=True)
     plt.savefig('images/vol.png', bbox_inches='tight')
 
-def backtest(signals, df):
-    """ Backtest the Strategy """
-    capital = float(100000.0)
-    positions = pd.DataFrame(index=signals.index).fillna(0.0)
-    positions['AAPL'] = 100*signals['signal']
-    portfolio = positions.multiply(df['Adj_Close'], axis=0)
-    pos_diff = positions.diff()
-    portfolio['holdings'] = (positions.multiply(df['Adj_Close'], axis=0)).sum(axis=1)
-    portfolio['cash'] = capital - (pos_diff.multiply(df['Adj_Close'], axis=0)).sum(axis=1).cumsum()
-    portfolio['total'] = portfolio['cash'] + portfolio['holdings']
-    portfolio['returns'] = portfolio['total'].pct_change()
-    portfolio.plot()
-    plt.savefig('images/returns.png')
-    return portfolio
 
 config = configparser.ConfigParser()
 config.read('data.ini')
@@ -147,7 +134,10 @@ bars['Close'] = df['Adj_Close']
 strategy = Strategy(bars, short_window, long_window)
 signals = strategy.generate_signals()
 
-portfolio = backtest(signals, df)
+pp = Portfolio()
+portfolio = pp.backtest(bars, signals)
+
+#portfolio = backtest(signals, df)
 print(portfolio[short_window:short_window+5:])
 print(portfolio.tail(5))
 
